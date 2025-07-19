@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+openai-agents
+openai
+pydantic
+python-multipart
+aiofiles
+python-dotenv
+asyncio
+amadeus
