@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -37,10 +38,20 @@ class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None
 
+@function_tool
+async def get_date_time() -> str:
+    """Get the current date and time."""
+    return datetime.now().isoformat()
+
+
 # Travel API functions
 @function_tool
 async def search_locations(keyword: str) -> str:
-    """Search for airports and cities by keyword (e.g., 'Bangkok', 'BKK', 'Thailand')."""
+    """Search for airports and cities by keyword (e.g., 'Bangkok', 'BKK', 'Thailand').
+    
+    Args:
+        keyword: The keyword to search for.
+    """
     try:
         response = amadeus.reference_data.locations.get(
             keyword=keyword,
@@ -48,11 +59,19 @@ async def search_locations(keyword: str) -> str:
         )
         return json.dumps(response.data)
     except ResponseError as e:
+        print(f"Error: {e}")
+        print(f"Args: {keyword}")
         return json.dumps({"error": str(e)})
 
 @function_tool
 async def search_flights(origin: str, destination: str, date: str) -> str:
-    """Search for available flights between two cities on a specific date."""
+    """Search for available flights between two cities on a specific date.
+    
+    Args:
+        origin: Origin airport/city IATA code (e.g., 'BOS')
+        destination: Destination airport/city IATA code (e.g., 'NYC')
+        date: The date, or range of dates, on which the flight will depart from the origin. Dates are specified in the ISO 8601 YYYY-MM-DD format, e.g. 2017-12-25.
+    """
     try:
         response = amadeus.shopping.flight_offers_search.get(
             originLocationCode=origin,
@@ -63,24 +82,33 @@ async def search_flights(origin: str, destination: str, date: str) -> str:
         )
         return json.dumps(response.data)
     except ResponseError as e:
+        print(f"Error: {e}")
+        print(f"Args: {origin}, {destination}, {date}")
         return json.dumps({"error": str(e)})
 
 @function_tool
 async def search_hotels(city: str) -> str:
-    """Search for available hotels in a city."""
+    """Search for available hotels in a city.
+    
+    Args:
+        city: The city to search for.
+    """
     try:
         response = amadeus.reference_data.locations.hotels.by_city.get(
             cityCode=city,
         )
         return json.dumps(response.data)
     except ResponseError as e:
+        print(f"Error: {e}")
+        print(f"Args: {city}")
         return json.dumps({"error": str(e)})
 
 # Create minimal travel agent
+# TODO: remove old sessions from database
 travel_agent = Agent(
     name="Travel Agent",
-    instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools.""",
-    tools=[search_locations, search_flights, search_hotels]
+    instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools. If a tools returns 400, make sure the arguments are correct and try again up to 3 times. Only display verified information gathered from the API tools. If information is missing, say this. Ask clarifying questions to the user.""",
+    tools=[search_locations, search_flights, search_hotels, get_date_time]
 )
 
 @app.get("/")
