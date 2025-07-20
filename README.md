@@ -1,16 +1,19 @@
 # Travel Agent AI
 
-An intelligent travel agent powered by AI that helps users find flights and travel information using real-time data from the Amadeus API.
+An intelligent travel agent powered by AI that helps users find flights and travel information using real-time data from the Amadeus API. Searches permutations and finds the best price and connection.
+
+[Screencast from 2025-07-20 14-21-55.webm](https://github.com/user-attachments/assets/113a94ca-dd1b-4223-bf91-70a6ffe81d54)
+
 
 ## Features
 
+- 💰 **Price Optimization** - Via permutations of airports and dates. Finds the cheapest option for a dedicated start departure and return date and length of stay.
 - 🤖 **AI-Powered Conversations** - Natural language interaction with an intelligent travel agent
 - ✈️ **Real-Time Flight Search** - Search flights with comprehensive filtering options
 - 🗺️ **Location Search** - Find airports and cities by keyword
 - 🏨 **Hotel Search** - Discover available hotels in destinations
 - 🎤 **Voice Interface** - Text-to-speech and speech-to-text capabilities
 - 📅 **Flexible Date Permutations** - Find optimal flight combinations across date ranges
-- 💰 **Price Filtering** - Set maximum budgets and currency preferences
 - 🔄 **Session Management** - Persistent conversation history
 
 ## Tech Stack
