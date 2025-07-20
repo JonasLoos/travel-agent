@@ -2,7 +2,7 @@
 
 An intelligent travel agent powered by AI that helps users find flights and travel information using real-time data from the Amadeus API. Searches permutations and finds the best price and connection.
 
-[Screencast from 2025-07-20 14-21-55.webm](https://github.com/user-attachments/assets/113a94ca-dd1b-4223-bf91-70a6ffe81d54)
+[Demo](https://github.com/user-attachments/assets/113a94ca-dd1b-4223-bf91-70a6ffe81d54)
 
 
 ## Features
