@@ -82,26 +82,59 @@ async def search_locations(keyword: str) -> str:
         return json.dumps({"error": str(e)})
 
 @function_tool
-async def search_flights(origin: str, destination: str, date: str) -> str:
-    """Search for available flights between two cities on a specific date.
+async def search_flights(
+    origin: str, 
+    destination: str, 
+    departure_date: str,
+    return_date: Optional[str] = None,
+    adults: int = 1,
+    #children: int = 0,
+    #infants: int = 0,
+    #travel_class: Optional[str] = None,  # ECONOMY, BUSINESS, FIRST
+    max_price: Optional[int] = None,
+    currency: str = "EUR",
+    non_stop_only: str = 'false',
+    max_results: int = 10,
+    #included_airlines: Optional[str] = None,  # comma-separated codes
+    #excluded_airlines: Optional[str] = None   # comma-separated codes
+) -> str:    
+    """Search for flights with comprehensive filtering options.
     
     Args:
         origin: Origin airport/city IATA code (e.g., 'BOS')
-        destination: Destination airport/city IATA code (e.g., 'NYC')
-        date: The date, or range of dates, on which the flight will depart from the origin. Dates are specified in the ISO 8601 YYYY-MM-DD format, e.g. 2017-12-25.
+        destination: Destination airport/city IATA code (e.g., 'NYC') 
+        departure_date: Departure date in YYYY-MM-DD format
+        return_date: Return date for round-trip (optional). 
+        adults: Number of adult travelers (1-9). Default is 1.
+        max_price: Maximum price per traveler (optional). 
+        currency: Currency code (USD, EUR, etc.). Default is EUR.
+        non_stop_only: If true, only direct flights. Default is false.
+        max_results: Maximum number of results to return. Default is 10. Please try to not exceed this.
     """
     try:
-        response = amadeus.shopping.flight_offers_search.get(
-            originLocationCode=origin,
-            destinationLocationCode=destination,
-            departureDate=date,
-            adults=1,
-            max=10,
-        )
+        params = {
+            "originLocationCode": origin,
+            "destinationLocationCode": destination,
+            "departureDate": departure_date,
+            "adults": adults,
+            "maxPrice": max_price,
+            "currencyCode": currency,
+            "max": max_results,
+            "nonStop": non_stop_only
+        }
+        
+        # Only add optional parameters if they have values
+        if return_date is not None:
+            params["returnDate"] = return_date
+        if max_price is not None:
+            params["maxPrice"] = max_price
+            
+        response = amadeus.shopping.flight_offers_search.get(**params)
+        print(f"Args: {origin=}, destination={destination}, departure_date={departure_date}, return_date={return_date}, adults={adults}, max_price={max_price}, currency={currency}, non_stop_only={non_stop_only}, max_results={max_results}")        
         return json.dumps(response.data)
     except ResponseError as e:
         print(f"Error: {e}")
-        print(f"Args: {origin}, {destination}, {date}")
+        print(f"Args: {origin=}, destination={destination}, departure_date={departure_date}, return_date={return_date}, adults={adults}, max_price={max_price}, currency={currency}, non_stop_only={non_stop_only}, max_results={max_results}")
         return json.dumps({"error": str(e)})
 
 @function_tool
@@ -121,10 +154,40 @@ async def search_hotels(city: str) -> str:
         print(f"Args: {city}")
         return json.dumps({"error": str(e)})
 
-# Create minimal travel agent
+# TODO: remove old sessions from database
 travel_agent = Agent(
     name="Travel Agent",
-    instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools. If a tools returns 400, make sure the arguments are correct and try again up to 3 times. Only display verified information gathered from the API tools. If information is missing, say this. Ask clarifying questions to the user. Before using API tools, specify a rough range of expected results, e.g. flight duration, so you can later filter out results that don't make sense, if necessary. Don't show flights that don't make sense to the user, e.g. if they take way too long.""",
+    instructions="""
+    Your Job:
+    - You are a travel agent with access to real-time travel data. Help users find flights and travel information using the available tools.
+    
+    Guidelines:
+    - If a tools returns 400, make sure the arguments. 
+    - Only display verified information gathered from the API tools. 
+    - If information is missing, say this. Ask clarifying questions to the user. 
+    - Don't show flights that wouldn't make sense to any user, e.g. if a  normally 1 hour flight takes >10 hours.
+
+    You can search for:
+    - Round-trip and one-way flights
+    - Multiple travelers
+    - Direct flights or with connections
+    - Specific price ranges
+    
+    Before you search for any flights,
+    1. Always ask users about their preferences: dates, max. price, number of travelers, if its one-way or round-trip,
+    and whether they want direct flights to provide the best recommendations.
+    2. Use the search_locations tool for city to airport codes.
+    3. Use the search_flights tool for the flights search.
+    
+    For every flight return at least the following information in structured format:
+    - Departure and arrival airports
+    - Departure and arrival times
+    - Duration
+    - Price
+    - Flight Number (carrier + flight number)
+    - Airline
+    """,
+
     tools=[search_locations, search_flights, search_hotels, get_date_time]
 )
 
