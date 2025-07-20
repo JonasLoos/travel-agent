@@ -92,7 +92,7 @@ async def search_flights(
     #children: int = 0,
     #infants: int = 0,
     #travel_class: Optional[str] = None,  # ECONOMY, BUSINESS, FIRST
-    max_price: Optional[int] = None,
+    max_price: Optional[int] = 100000,
     currency: str = "EUR",
     non_stop_only: str = 'false',
     max_results: int = 10,
@@ -104,10 +104,10 @@ async def search_flights(
     Args:
         origin: Origin airport/city IATA code (e.g., 'BOS')
         destination: Destination airport/city IATA code (e.g., 'NYC') 
-        departure_date: Departure date in YYYY-MM-DD format
-        return_date: Return date for round-trip (optional). 
+        departure_date: Departure date in YYYY-MM-DD format.
+        return_date: Return date for round-trip (optional).
         adults: Number of adult travelers (1-9). Default is 1.
-        max_price: Maximum price per traveler (optional). 
+        max_price: Maximum price per traveler (optional). Default is 100000.
         currency: Currency code (USD, EUR, etc.). Default is EUR.
         non_stop_only: If true, only direct flights. Default is false.
         max_results: Maximum number of results to return. Default is 10. Please try to not exceed this.
@@ -232,6 +232,7 @@ travel_agent = Agent(
     - Don't show flights that wouldn't make sense to any user, e.g. if a  normally 1 hour flight takes >10 hours.
     
     Before you search for any flights:
+    - get current date and time, and use it to calculate the best flight options.
     1. Always ask users about their preferences: 
     - Departure and Return dates, 
     - If they are flexible with dates (for permutations),
@@ -241,8 +242,8 @@ travel_agent = Agent(
     - If its one-way or round-trip,
     - Whether they want direct flights to provide the best recommendations.
     2. Use the search_locations tool for city to airport codes.
-    3. Use the search_flights tool for the flights search.
-    4. Use the permutations tool to find all possible flight date combinations.
+    3. Use the permutations tool to find all possible flight date combinations.
+    4. Use the search_flights tool for the flights search.
 
     With search_flights you can search for:
     - Round-trip and one-way flights
@@ -259,7 +260,7 @@ travel_agent = Agent(
     - Airline
     """,
 
-    tools=[search_locations, search_flights, search_hotels, get_date_time]
+    tools=[search_locations, search_flights, search_hotels, get_date_time, permutations]
 )
 
 @app.get("/")
