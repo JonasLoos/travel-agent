@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,6 +60,7 @@ class TextToSpeechRequest(BaseModel):
 async def get_date_time() -> str:
     """Get the current date and time."""
     return datetime.now().isoformat()
+
 
 
 # Travel API functions
@@ -154,32 +155,102 @@ async def search_hotels(city: str) -> str:
         print(f"Args: {city}")
         return json.dumps({"error": str(e)})
 
+@function_tool
+async def permutations(
+    departure_date_start: str,
+    departure_date_end: str,
+    return_date_start: Optional[str] = None,
+    return_date_end: Optional[str] = None,
+    min_days: int = 1,
+    max_days: int = 7
+
+    ) -> str:
+    """Helper function to permutate flight options, to find the best flight options, for the users flexibility in dates.
+    Creates lists for departure_date and return_date. Then permutates all combinations. Limits permutations to where departure_date is before return_date.
+    The results is formatted in a way that search_flights can be called for each permutation.
+
+    Args:
+    - departure_date_start: Departure earliest date in YYYY-MM-DD format
+    - departure_date_end: Departure latest date in YYYY-MM-DD format
+    - return_date_start: Return earliest date in YYYY-MM-DD format (optional). Default is None.
+    - return_date_end: Return latest date in YYYY-MM-DD format (optional). Default is None.
+    - min_days: Minimum trip duration in days (return_date - departure_date). Default is 1.
+    - max_days: Maximum trip duration in days (return_date - departure_date). Default is 7.
+
+    """
+    try:
+        # Generate departure dates
+        start = datetime.strptime(departure_date_start, "%Y-%m-%d")
+        end = datetime.strptime(departure_date_end, "%Y-%m-%d")
+        
+        departures = []
+        current = start
+        while current <= end:
+            departures.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+        
+        # Generate return dates if provided
+        returns = []
+        if return_date_start and return_date_end:
+            ret_start = datetime.strptime(return_date_start, "%Y-%m-%d")
+            ret_end = datetime.strptime(return_date_end, "%Y-%m-%d")
+            
+            current = ret_start
+            while current <= ret_end:
+                returns.append(current.strftime("%Y-%m-%d"))
+                current += timedelta(days=1)
+        
+        # Create permutations with trip duration limits
+        perms = []
+        for dep in departures:
+            if returns:
+                for ret in returns:
+                    if dep < ret:  # departure before return
+                        trip_days = (datetime.strptime(ret, "%Y-%m-%d") - datetime.strptime(dep, "%Y-%m-%d")).days
+                        if min_days <= trip_days <= max_days:
+                            perms.append({"departure_date": dep, "return_date": ret})
+            else:
+                perms.append({"departure_date": dep})
+        
+        return json.dumps(perms)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 # TODO: remove old sessions from database
 travel_agent = Agent(
     name="Travel Agent",
     instructions="""
     Your Job:
     - You are a travel agent with access to real-time travel data. Help users find flights and travel information using the available tools.
-    
+    - You have capabilities to search for flights, and find all possible permutations of flights, to find the best flight options.
+
     Guidelines:
     - If a tools returns 400, make sure the arguments. 
     - Only display verified information gathered from the API tools. 
     - If information is missing, say this. Ask clarifying questions to the user. 
     - Don't show flights that wouldn't make sense to any user, e.g. if a  normally 1 hour flight takes >10 hours.
+    
+    Before you search for any flights:
+    1. Always ask users about their preferences: 
+    - Departure and Return dates, 
+    - If they are flexible with dates (for permutations),
+        -> Whath their minimum and maximum amount of stay is 
+    - Max. price,
+    - Number of travelers, 
+    - If its one-way or round-trip,
+    - Whether they want direct flights to provide the best recommendations.
+    2. Use the search_locations tool for city to airport codes.
+    3. Use the search_flights tool for the flights search.
+    4. Use the permutations tool to find all possible flight date combinations.
 
-    You can search for:
+    With search_flights you can search for:
     - Round-trip and one-way flights
     - Multiple travelers
     - Direct flights or with connections
     - Specific price ranges
     
-    Before you search for any flights,
-    1. Always ask users about their preferences: dates, max. price, number of travelers, if its one-way or round-trip,
-    and whether they want direct flights to provide the best recommendations.
-    2. Use the search_locations tool for city to airport codes.
-    3. Use the search_flights tool for the flights search.
-    
-    For every flight return at least the following information in structured format:
+    For every flight search, return at least the following information in structured format:
     - Departure and arrival airports
     - Departure and arrival times
     - Duration
