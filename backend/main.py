@@ -1,15 +1,20 @@
 from datetime import datetime
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import json
+import io
+import base64
 from dotenv import load_dotenv
 from agents import Agent, Runner, SQLiteSession
 from agents import function_tool
 import os
 from amadeus import Client, ResponseError
+import openai
+import tempfile
 
 
 DATABASE_PATH = Path("travel_agent_sessions.db")
@@ -18,6 +23,9 @@ if DATABASE_PATH.exists():
 
 # Load environment variables
 load_dotenv()
+
+# Initialize OpenAI client
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Initialize Amadeus client
 amadeus = Client(
@@ -43,6 +51,10 @@ app.add_middleware(
 class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None
+
+class TextToSpeechRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "alloy"
 
 @function_tool
 async def get_date_time() -> str:
@@ -136,6 +148,65 @@ async def chat_with_agent(message: ChatMessage):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/text-to-speech")
+async def text_to_speech(request: TextToSpeechRequest):
+    """Convert text to speech using OpenAI's TTS API"""
+    try:
+        # Use OpenAI's TTS API
+        response = openai.audio.speech.create(
+            model="tts-1",
+            voice=request.voice,
+            input=request.text
+        )
+        
+        # Get the audio data
+        audio_data = response.content
+        
+        # Convert to base64 for frontend
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        return {
+            "audio": audio_base64,
+            "format": "mp3",
+            "text": request.text
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text-to-speech error: {str(e)}")
+
+@app.post("/speech-to-text")
+async def speech_to_text(audio_file: UploadFile = File(...)):
+    """Convert speech to text using OpenAI's Whisper API"""
+    try:
+        # Read audio file
+        audio_data = await audio_file.read()
+        
+        # Create temporary file for audio
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_path = temp_file.name
+        
+        try:
+            # Use OpenAI's Whisper API
+            with open(temp_path, "rb") as audio_file:
+                transcript = openai.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    response_format="text"
+                )
+            
+            return {
+                "text": transcript,
+                "confidence": 1.0
+            }
+            
+        finally:
+            # Clean up temporary file
+            os.unlink(temp_path)
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Speech-to-text error: {str(e)}")
 
 
 if __name__ == "__main__":

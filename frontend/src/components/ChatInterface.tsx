@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, RefreshCw } from 'lucide-react';
+import { Send, Loader2, RefreshCw, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { useVoice } from '../hooks/useVoice';
 
 interface Message {
   id: string;
@@ -27,6 +28,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [wasLoading, setWasLoading] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  
+  const {
+    isListening,
+    isSpeaking,
+    startListening,
+    stopListening,
+    speak,
+    transcript,
+    error: voiceError
+  } = useVoice();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,11 +56,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     setWasLoading(isLoading);
   }, [isLoading, wasLoading]);
 
+  // Update input when transcript changes
+  useEffect(() => {
+    if (transcript) {
+      setInputMessage(transcript);
+    }
+  }, [transcript]);
+
+  // Auto-speak agent messages when enabled
+  useEffect(() => {
+    if (autoSpeak && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === 'agent' && !lastMessage.isError && !isSpeaking) {
+        speak(lastMessage.text);
+      }
+    }
+  }, [messages, autoSpeak, speak, isSpeaking]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputMessage.trim() && !isLoading) {
       onSendMessage(inputMessage);
       setInputMessage('');
+      if (isListening) {
+        stopListening();
+      }
+    }
+  };
+
+  const handleVoiceInput = async () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      await startListening();
+    }
+  };
+
+  const handleSpeakLastMessage = () => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.sender === 'agent' && !lastMessage.isError) {
+        speak(lastMessage.text);
+      }
     }
   };
 
@@ -60,9 +109,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     <div className="card h-[600px] flex flex-col">
       {/* Header */}
       <div className="border-b border-gray-200 pb-4 mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">Travel Assistant</h2>
-        <p className="text-sm text-gray-600">Ask me anything about travel planning!</p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Travel Assistant</h2>
+            <p className="text-sm text-gray-600">Ask me anything about travel planning!</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setAutoSpeak(!autoSpeak)}
+              className={`p-2 rounded-lg transition-colors ${
+                autoSpeak 
+                  ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+              title={autoSpeak ? 'Disable auto-speak' : 'Enable auto-speak'}
+            >
+              {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* Voice Error Display */}
+      {voiceError && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700">{voiceError}</p>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
@@ -88,6 +161,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
                 } ${message.isError ? 'border-red-300 bg-red-50' : ''}`}
               >
                 <div className="whitespace-pre-wrap">{message.text}</div>
+                
+                {message.sender === 'agent' && !message.isError && (
+                  <button
+                    onClick={() => speak(message.text)}
+                    disabled={isSpeaking}
+                    className="mt-2 p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                    title="Listen to this message"
+                  >
+                    <Volume2 className="h-3 w-3" />
+                  </button>
+                )}
                 
                 {message.isError && message.errorDetails && (
                   <div className="mt-3 p-3 bg-red-100 border border-red-200 rounded-lg">
@@ -145,10 +229,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
             type="text"
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Ask about travel planning, destinations, flights, hotels..."
+            placeholder={isListening ? "Listening..." : "Ask about travel planning, destinations, flights, hotels..."}
             className="input-field flex-1"
             disabled={isLoading}
           />
+          <button
+            type="button"
+            onClick={handleVoiceInput}
+            disabled={isLoading}
+            className={`p-2 rounded-lg transition-colors ${
+              isListening 
+                ? 'bg-red-100 text-red-600 hover:bg-red-200' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            title={isListening ? 'Stop listening' : 'Start voice input'}
+          >
+            {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </button>
           <button
             type="submit"
             disabled={!inputMessage.trim() || isLoading}
@@ -161,6 +258,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
             )}
           </button>
         </div>
+        
+        {/* Voice input status */}
+        {isListening && (
+          <div className="mt-2 text-sm text-blue-600 flex items-center space-x-2">
+            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+            <span>Listening... Speak now</span>
+          </div>
+        )}
       </form>
     </div>
   );
