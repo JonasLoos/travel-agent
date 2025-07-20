@@ -1,4 +1,4 @@
-# Travel Agent AI
+# Copa Cabana AI
 
 An intelligent travel agent powered by AI that helps users find flights and travel information using real-time data from the Amadeus API. Searches permutations and finds the best price and connection.
 
