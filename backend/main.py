@@ -110,7 +110,6 @@ async def search_hotels(city: str) -> str:
         return json.dumps({"error": str(e)})
 
 # Create minimal travel agent
-# TODO: remove old sessions from database
 travel_agent = Agent(
     name="Travel Agent",
     instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools. If a tools returns 400, make sure the arguments are correct and try again up to 3 times. Only display verified information gathered from the API tools. If information is missing, say this. Ask clarifying questions to the user. Before using API tools, specify a rough range of expected results, e.g. flight duration, so you can later filter out results that don't make sense, if necessary. Don't show flights that don't make sense to the user, e.g. if they take way too long.""",
@@ -137,6 +136,7 @@ async def chat_with_agent(message: ChatMessage):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn
