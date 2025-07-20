@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +10,11 @@ from agents import Agent, Runner, SQLiteSession
 from agents import function_tool
 import os
 from amadeus import Client, ResponseError
+
+
+DATABASE_PATH = Path("travel_agent_sessions.db")
+if DATABASE_PATH.exists():
+    DATABASE_PATH.unlink() # delete previous database file if it exists
 
 # Load environment variables
 load_dotenv()
@@ -107,7 +113,7 @@ async def search_hotels(city: str) -> str:
 # TODO: remove old sessions from database
 travel_agent = Agent(
     name="Travel Agent",
-    instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools. If a tools returns 400, make sure the arguments are correct and try again up to 3 times. Only display verified information gathered from the API tools. If information is missing, say this. Ask clarifying questions to the user. Don't show crazy travel options like intracontinental flights that take >10 hours.""",
+    instructions="""You are a travel agent with access to real-time travel data. Help users find flights, hotels, and travel information using the available tools. If a tools returns 400, make sure the arguments are correct and try again up to 3 times. Only display verified information gathered from the API tools. If information is missing, say this. Ask clarifying questions to the user. Before using API tools, specify a rough range of expected results, e.g. flight duration, so you can later filter out results that don't make sense, if necessary. Don't show flights that don't make sense to the user, e.g. if they take way too long.""",
     tools=[search_locations, search_flights, search_hotels, get_date_time]
 )
 
@@ -118,8 +124,7 @@ async def root():
 @app.post("/chat")
 async def chat_with_agent(message: ChatMessage):
     try:
-        session_id = message.session_id or "default_session"
-        session = SQLiteSession(session_id, "travel_agent_sessions.db")
+        session = SQLiteSession(message.session_id, DATABASE_PATH)
 
         result = await Runner.run(
             travel_agent,
@@ -129,8 +134,6 @@ async def chat_with_agent(message: ChatMessage):
 
         return {
             "response": result.final_output,
-            "session_id": session_id,
-            "success": True
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

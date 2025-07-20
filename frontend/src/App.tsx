@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plane, Hotel, MapPin, Calendar, Users, DollarSign } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plane, Hotel, MapPin, Calendar, Users, DollarSign } from 'lucide-react';
 import ChatInterface from './components/ChatInterface';
 import TravelPlanForm from './components/TravelPlanForm';
 
