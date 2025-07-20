@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Loader2, RefreshCw, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 
@@ -29,6 +29,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
   const inputRef = useRef<HTMLInputElement>(null);
   const [wasLoading, setWasLoading] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);
+  const lastAutoSpokenMessageRef = useRef<string>('');
   
   const {
     isListening,
@@ -36,6 +37,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     startListening,
     stopListening,
     speak,
+    stopSpeaking,
     transcript,
     error: voiceError
   } = useVoice();
@@ -63,15 +65,42 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     }
   }, [transcript]);
 
+  const handleSpeakMessage = useCallback((text: string) => {
+    // If already speaking, stop current audio
+    if (isSpeaking) {
+      stopSpeaking();
+    } else {
+      // Only start new audio if not currently speaking
+      speak(text);
+    }
+  }, [isSpeaking, speak, stopSpeaking]);
+
   // Auto-speak agent messages when enabled
   useEffect(() => {
-    if (autoSpeak && messages.length > 0) {
+    if (autoSpeak && messages.length > 0 && !isLoading) {
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage.sender === 'agent' && !lastMessage.isError && !isSpeaking) {
-        speak(lastMessage.text);
+      if (lastMessage.sender === 'agent' && !lastMessage.isError) {
+        // Only auto-speak if this message hasn't been spoken before
+        if (lastAutoSpokenMessageRef.current !== lastMessage.text) {
+          lastAutoSpokenMessageRef.current = lastMessage.text;
+          handleSpeakMessage(lastMessage.text);
+        }
       }
     }
-  }, [messages, autoSpeak, speak, isSpeaking]);
+  }, [messages, autoSpeak, isLoading, handleSpeakMessage]);
+
+  const handleAutoSpeakToggle = () => {
+    const newAutoSpeakState = !autoSpeak;
+    setAutoSpeak(newAutoSpeakState);
+    
+    // If disabling auto-speak, stop any currently playing audio
+    if (!newAutoSpeakState && isSpeaking) {
+      stopSpeaking();
+    }
+    
+    // Reset the last spoken message when toggling auto-speak
+    lastAutoSpokenMessageRef.current = '';
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,15 +121,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
     }
   };
 
-  const handleSpeakLastMessage = () => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.sender === 'agent' && !lastMessage.isError) {
-        speak(lastMessage.text);
-      }
-    }
-  };
-
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -116,7 +136,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
           </div>
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setAutoSpeak(!autoSpeak)}
+              onClick={handleAutoSpeakToggle}
               className={`p-2 rounded-lg transition-colors ${
                 autoSpeak 
                   ? 'bg-blue-100 text-blue-600 hover:bg-blue-200' 
@@ -164,12 +184,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
                 
                 {message.sender === 'agent' && !message.isError && (
                   <button
-                    onClick={() => speak(message.text)}
-                    disabled={isSpeaking}
-                    className="mt-2 p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
-                    title="Listen to this message"
+                    onClick={() => handleSpeakMessage(message.text)}
+                    className="mt-2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                    title={isSpeaking ? "Stop playback" : "Listen to this message"}
                   >
-                    <Volume2 className="h-3 w-3" />
+                    {isSpeaking ? (
+                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                    ) : (
+                      <Volume2 className="h-3 w-3" />
+                    )}
                   </button>
                 )}
                 
@@ -271,4 +294,4 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, onSendMessage, 
   );
 };
 
-export default ChatInterface; 
+export default ChatInterface;

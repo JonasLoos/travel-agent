@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, Square } from 'lucide-react';
 import { useVoice } from '../hooks/useVoice';
 
 interface VoiceControlsProps {
@@ -18,7 +18,7 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
     isSpeaking,
     startListening,
     stopListening,
-    speak,
+    stopSpeaking,
     transcript,
     error
   } = useVoice();
@@ -38,8 +38,15 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
   };
 
   const handleAutoSpeakToggle = () => {
+    const newAutoSpeakState = !autoSpeak;
+    
+    // If disabling auto-speak, stop any currently playing audio
+    if (!newAutoSpeakState && isSpeaking) {
+      stopSpeaking();
+    }
+    
     if (onAutoSpeakChange) {
-      onAutoSpeakChange(!autoSpeak);
+      onAutoSpeakChange(newAutoSpeakState);
     }
   };
 
@@ -70,6 +77,17 @@ const VoiceControls: React.FC<VoiceControlsProps> = ({
       >
         {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
       </button>
+
+      {/* Stop Speaking Button (only show when speaking) */}
+      {isSpeaking && (
+        <button
+          onClick={stopSpeaking}
+          className="p-2 rounded-lg transition-colors bg-red-100 text-red-600 hover:bg-red-200"
+          title="Stop speaking"
+        >
+          <Square className="h-4 w-4" />
+        </button>
+      )}
 
       {/* Status Indicators */}
       {isListening && (

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface UseVoiceReturn {
   isListening: boolean;
@@ -6,6 +6,7 @@ interface UseVoiceReturn {
   startListening: () => Promise<void>;
   stopListening: () => void;
   speak: (text: string) => Promise<void>;
+  stopSpeaking: () => void;
   transcript: string;
   error: string | null;
 }
@@ -18,16 +19,46 @@ export const useVoice = (): UseVoiceReturn => {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const lastSpokenTextRef = useRef<string>('');
+
+  const cleanupAudio = useCallback(() => {
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+    setIsSpeaking(false);
+    lastSpokenTextRef.current = '';
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+      if (mediaRecorderRef.current && isListening) {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [cleanupAudio, isListening]);
 
   const startListening = useCallback(async () => {
     try {
       setError(null);
       setTranscript('');
       
-      // Request microphone access
+      // Stop any current audio before starting recording
+      cleanupAudio();
+      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Create MediaRecorder for audio recording
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm;codecs=opus'
       });
@@ -43,10 +74,8 @@ export const useVoice = (): UseVoiceReturn => {
 
       mediaRecorder.onstop = async () => {
         try {
-          // Create audio blob
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           
-          // Send to backend for transcription
           const formData = new FormData();
           formData.append('audio_file', audioBlob, 'recording.webm');
           
@@ -65,7 +94,6 @@ export const useVoice = (): UseVoiceReturn => {
           console.error('Transcription error:', err);
           setError(err instanceof Error ? err.message : 'Failed to transcribe audio');
         } finally {
-          // Stop all tracks
           stream.getTracks().forEach(track => track.stop());
         }
       };
@@ -76,7 +104,6 @@ export const useVoice = (): UseVoiceReturn => {
         stream.getTracks().forEach(track => track.stop());
       };
 
-      // Start recording
       mediaRecorder.start();
       setIsListening(true);
       
@@ -84,7 +111,7 @@ export const useVoice = (): UseVoiceReturn => {
       console.error('Error starting recording:', err);
       setError(err instanceof Error ? err.message : 'Failed to access microphone');
     }
-  }, []);
+  }, [cleanupAudio]);
 
   const stopListening = useCallback(() => {
     if (mediaRecorderRef.current && isListening) {
@@ -93,12 +120,31 @@ export const useVoice = (): UseVoiceReturn => {
     }
   }, [isListening]);
 
+  const stopSpeaking = useCallback(() => {
+    cleanupAudio();
+  }, [cleanupAudio]);
+
   const speak = useCallback(async (text: string) => {
+    // Prevent duplicate requests for the same text
+    if (lastSpokenTextRef.current === text && isSpeaking) {
+      cleanupAudio();
+      return;
+    }
+    
+    // If already speaking, stop current audio and don't start new one
+    if (isSpeaking) {
+      cleanupAudio();
+      return;
+    }
+    
     try {
       setError(null);
       setIsSpeaking(true);
+      lastSpokenTextRef.current = text;
 
-      // Use backend TTS for better quality and consistency
+      // Create new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       const response = await fetch('/text-to-speech', {
         method: 'POST',
         headers: {
@@ -106,9 +152,15 @@ export const useVoice = (): UseVoiceReturn => {
         },
         body: JSON.stringify({ 
           text,
-          voice: 'alloy' // OpenAI TTS voice
+          voice: 'alloy'
         }),
+        signal: abortControllerRef.current.signal,
       });
+
+      // Check if request was aborted
+      if (abortControllerRef.current.signal.aborted) {
+        return;
+      }
 
       if (!response.ok) {
         throw new Error('Failed to convert text to speech');
@@ -116,7 +168,11 @@ export const useVoice = (): UseVoiceReturn => {
 
       const data = await response.json();
       
-      // Convert base64 audio to blob and play
+      // Check again if request was aborted before processing audio
+      if (abortControllerRef.current.signal.aborted) {
+        return;
+      }
+      
       const audioBlob = new Blob(
         [Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))],
         { type: 'audio/mp3' }
@@ -125,25 +181,33 @@ export const useVoice = (): UseVoiceReturn => {
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
       
+      currentAudioRef.current = audio;
+      
       audio.onended = () => {
-        setIsSpeaking(false);
+        cleanupAudio();
         URL.revokeObjectURL(audioUrl);
       };
       
       audio.onerror = () => {
-        setIsSpeaking(false);
+        cleanupAudio();
         URL.revokeObjectURL(audioUrl);
-        throw new Error('Failed to play audio');
+        setError('Failed to play audio');
       };
       
       await audio.play();
       
     } catch (err) {
+      // Don't set error if request was aborted
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('Speak request was cancelled');
+        return;
+      }
+      
       console.error('Error in text-to-speech:', err);
       setError(err instanceof Error ? err.message : 'Failed to convert text to speech');
-      setIsSpeaking(false);
+      cleanupAudio();
     }
-  }, []);
+  }, [isSpeaking, cleanupAudio]);
 
   return {
     isListening,
@@ -151,6 +215,7 @@ export const useVoice = (): UseVoiceReturn => {
     startListening,
     stopListening,
     speak,
+    stopSpeaking,
     transcript,
     error,
   };
